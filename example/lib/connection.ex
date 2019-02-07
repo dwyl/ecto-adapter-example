@@ -3,8 +3,9 @@ defmodule Example.Connection do
 
   @impl true
   def all(query) do
-    select = ["SELECT ", get_name(query), ?., get_field(query)]
-    from = [" FROM ", get_table(query), " AS ", get_name(query)]
+    name = get_name(query)
+    select = ["SELECT ", get_selects(query, name)]
+    from = [" FROM ", get_table(query), " AS ", name]
     where = [" WHERE ", ?(, get_expression(query), ?)]
 
     [select, from, where]
@@ -16,10 +17,24 @@ defmodule Example.Connection do
     String.first(table)
   end
 
-  defp get_field(%{select: %{fields: fields}}) do
-    [{{:., _, [{:&, _, [0]}, field]}, _, _}] = fields
+  defp get_selects(%{select: %{fields: fields}}, name) do
+    field_map(fields, name)
+  end
 
-    [?", to_string(field), ?"]
+  defp field_map(fields, name, acc \\ [])
+
+  defp field_map([field | []], name, acc) do
+    acc ++ [name, ?., get_field_name(field)]
+  end
+
+  defp field_map([field | remaining], name, acc) do
+    field_map(remaining, name, acc ++ [name, ?., get_field_name(field), ?,, ?\s])
+  end
+
+  defp get_field_name(field) do
+    {{:., _, [{:&, _, [0]}, field_name]}, _, _} = field
+
+    [?", to_string(field_name), ?"]
   end
 
   defp get_table(%{sources: sources}) do
