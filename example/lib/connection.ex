@@ -2,6 +2,11 @@ defmodule Example.Connection do
   @behaviour Ecto.Adapters.SQL.Connection
 
   @impl true
+  def child_spec(opts) do
+    Postgrex.child_spec(opts)
+  end
+
+  @impl true
   def all(query) do
     name = get_name(query)
     select = ["SELECT ", get_selects(query, name)]

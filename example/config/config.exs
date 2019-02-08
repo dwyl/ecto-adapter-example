@@ -28,3 +28,10 @@ use Mix.Config
 # here (which is why it is important to import them last).
 #
 #     import_config "#{Mix.env()}.exs"
+
+config :example, Example.TestApp.Repo,
+  username: "postgres",
+  password: "postgres",
+  database: "adapter_example_test",
+  hostname: "localhost",
+  pool_size: 10
