@@ -366,29 +366,32 @@ We use the `Ecto.Adapters.SQL.to_sql/3` function to view the SQL string generate
 
 So far we've learned how to turn a query into SQL, but we want to actually use our Adapter with a database. For this we'll need to add a few more callback implementations.
 
-First, we need to implement the Ecto.Adapter.Storage behaviour. This is what will allow us to create and drop our database. 
+First, we need to implement the Ecto.Adapter.Storage behaviour. This is what will allow us to create and drop our database. We'll do this in our main Adapter file, `lib/example.ex`.
 
 ``` elixir
-  @behaviour Ecto.Adapter.Storage
+  defmodule Example do
+    ...
+    @behaviour Ecto.Adapter.Storage
 
-  @impl true
-  def storage_up(opts) do
-    {:ok, _} = Application.ensure_all_started(:postgrex)
+    @impl true
+    def storage_up(opts) do
+      {:ok, _} = Application.ensure_all_started(:postgrex)
 
-    database = Keyword.fetch!(opts, :database)
-    maintenance_database = Keyword.get(opts, :maintenance_database, "postgres")
-    opts = Keyword.put(opts, :database, maintenance_database)
+      database = Keyword.fetch!(opts, :database)
+      maintenance_database = Keyword.get(opts, :maintenance_database, "postgres")
+      opts = Keyword.put(opts, :database, maintenance_database)
 
-    command = ~s(CREATE DATABASE "#{database}")
+      command = ~s(CREATE DATABASE "#{database}")
 
-    {:ok, conn} = Postgrex.start_link(opts)
+      {:ok, conn} = Postgrex.start_link(opts)
 
-    case Postgrex.query(conn, command, [], opts) do
-      {:ok, _} ->
-        :ok
+      case Postgrex.query(conn, command, [], opts) do
+        {:ok, _} ->
+          :ok
 
-      {:error, error} ->
-        {:error, Exception.message(error)}
+        {:error, error} ->
+          {:error, Exception.message(error)}
+      end
     end
   end
 ```
@@ -421,3 +424,58 @@ def storage_down(opts) do
   end
 end
 ```
+
+## Migrations
+
+Now that we can create and drop our database, we want to be able to run migrations on it. We'll start with the `execute_ddl/1` callback, as this is what's used to actually execute our migration commands. We're only going to implement it for `:create` actions here, but in a full adapter, you'd want to account for `:alter` and `:drop` actions too.
+
+``` elixir
+defmodule Example.Connection do
+  ...
+  @impl true
+  def execute_ddl({command, table, columns}) when command in [:create, :create_if_not_exists] do
+    [
+      [
+        "CREATE TABLE IF NOT EXISTS ",
+        [?", to_string(table.name), ?"],
+        ?\s,
+        [?(, column_map(columns, []), get_pk(columns), ?)]
+      ]
+    ]
+  end
+
+  defp column_map([{_, name, type, _} | []], acc) do
+    acc ++ [?", to_string(name), ?", ?\s, get_type(type)]
+  end
+
+  defp column_map([{_, name, type, _} | remaining], acc) do
+    column_map(remaining, acc ++ [?", to_string(name), ?", ?\s, get_type(type), ?,, ?\s])
+  end
+
+  defp get_type(type) do
+    case type do
+      time
+      when time in [:utc_datetime, :utc_datetime_usec, :naive_datetime, :naive_datetime_usec] ->
+        ["timestamp", ?(, ?0, ?)]
+
+      :string ->
+        "varchar"
+
+      _ ->
+        to_string(type)
+    end
+  end
+
+  defp get_pk(columns) do
+    case Enum.find(columns, fn {_, _, _, opts} -> Keyword.get(opts, :primary_key) == true end) do
+      {_, name, _, _} -> [?,, " PRIMARY KEY ", ?(, ?", to_string(name), ?", ?)]
+      nil -> []
+    end
+  end
+end
+```
+
+The main function here, as you can tell by the `@impl` declaration, is `execute_ddl/1`. We've added a guard clause to the function declaration (`when command in [:create, :create_if_not_exists]`), to ensure this function is only called when a table is created.
+
+THe other functions map over the columns, types and set the primary key if there is one.
+

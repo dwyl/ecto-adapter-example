@@ -29,6 +29,8 @@ use Mix.Config
 #
 #     import_config "#{Mix.env()}.exs"
 
+config :example, ecto_repos: [Example.TestApp.Repo]
+
 config :example, Example.TestApp.Repo,
   username: "postgres",
   password: "postgres",
